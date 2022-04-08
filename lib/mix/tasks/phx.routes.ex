@@ -53,21 +53,28 @@ defmodule Mix.Tasks.Phx.Routes do
   def get_url_info(url, {router_mod, _opts}) do
     %{path: path} = URI.parse(url)
 
-    %{plug: plug, plug_opts: plug_opts} = Phoenix.Router.route_info(router_mod, "GET", path, "")
+    meta = Phoenix.Router.route_info(router_mod, "GET", path, "")
+    %{plug: plug, plug_opts: plug_opts} = meta
+    {module, func_name} =
+      if log_mod = meta[:log_module] do
+        # TODO add `:log_function` to router metadata and use here without hardcoding LV
+        {log_mod, :mount}
+      else
+        {plug, plug_opts}
+      end
 
     Mix.shell().info("""
 
-    Module: #{plug}
-    Function: #{plug_opts}
+    Module: #{inspect(module)}
+    Function: #{inspect(func_name)}
     """)
 
-    line_number = get_line_number(plug, plug_opts)
-    file_path = get_file_path(plug)
-
-    Mix.shell().info("#{file_path}:#{line_number}")
-  rescue
-    _ ->
-      Mix.raise("could not locate the corresponding controller function")
+    file_path = get_file_path(module)
+    if line = get_line_number(module, func_name) do
+      Mix.shell().info("#{file_path}:#{line}")
+    else
+      Mix.shell().info("#{file_path}")
+    end
   end
 
   def list_routes({router_mod, opts}, base) do
@@ -139,7 +146,9 @@ defmodule Mix.Tasks.Phx.Routes do
         type == :function and name == function_name
       end)
 
-    {_, line, _, _, _} = function_infos
-    line
+    case function_infos do
+      {_, line, _, _, _} -> line
+      nil -> nil
+    end
   end
 end
